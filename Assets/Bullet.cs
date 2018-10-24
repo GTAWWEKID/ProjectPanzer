@@ -58,14 +58,14 @@ public class Bullet : NetworkBehaviour {
         OnTriggerEnter2D( collision.collider );
     }
 
-/*    [ClientRpc]
+    [ClientRpc]
     void RpcDoExplosion( Vector2 position )
     {
         GameObject go = Instantiate( ExplosionPrefab, position, Quaternion.identity );
         go.GetComponent<BulletExplosion>().Radius = Radius;
     }
 
-*/
+
     void OnTriggerEnter2D(Collider2D collider)
     {
         Debug.Log("OnTriggerEnter2D");
@@ -130,7 +130,6 @@ public class Bullet : NetworkBehaviour {
         {
             GameManager.Instance().UnregisterResolutionObject(gameObject);
         }
-
         // Remove ourselves from the game
         Destroy(gameObject);
 

@@ -69,9 +69,16 @@ public class GameManager : NetworkBehaviour {
             }
             else
             {
-                // It's time to start the match!
-                StartNewMatch();
+                int numOfConnectedPlayer = NetworkServer.connections.Count;
+                int realPlayers = NetworkClient.allClients.Count;
+                Debug.Log(numOfConnectedPlayer + " Players connected of " + realPlayers);
+                if(numOfConnectedPlayer == realPlayers)
+                    StartNewMatch();
+                
             }
+
+
+
         }
 
 
@@ -178,8 +185,8 @@ public class GameManager : NetworkBehaviour {
             haveFiredBullets = true;
         }
 
-        if(activeResolutionsObjects.Count > 0)
-        {
+        if(activeResolutionsObjects.Count > 0 || (TimeLeft < -5f))
+        { 
             bulletsHaveSpawned = true;
         }
 
@@ -192,6 +199,8 @@ public class GameManager : NetworkBehaviour {
             // No more bullets/explosions/etc...  Resolution phase is over!
             return false;
         }
+
+        
 
         return true; // We still have more to do
 
@@ -221,13 +230,16 @@ public class GameManager : NetworkBehaviour {
     {
         TurnNumber++;
         TurnState = TURNSTATE.MOVE;
-        TimeLeft = 10;
+        TimeLeft = 30;
         haveFiredBullets = false;
         Debug.Log("Starting Turn: " + TurnNumber);
-
+        /*
         GameObject ntgo = Instantiate(NewTurnAnimationPrefab);
+        ntgo.transform.SetParent(GameObject.FindGameObjectWithTag("MainCamera").transform);
+        
         Debug.Log(ntgo);
         EnqueueEvent(ntgo);
+        */
     }
 
     void AdvanceTurnPhase()

@@ -11,13 +11,20 @@ public class Tank : NetworkBehaviour {
 	// Use this for initialization
 	void Start () {
         gameManager = GameObject.FindObjectOfType<GameManager>();
-	}
+        transform.Translate(GameObject.FindObjectOfType<Player>().transform.position);
+        serverRotation = originalRotation = transform.rotation;
+        transform.rotation = serverRotation;
+        CmdUpdatePosition(transform.position);
+    }
 
     GameManager gameManager;
 
-    // SyncVars?
+    [SyncVar]
     float MovementPerTurn = 5;
-    float MovementLeft;
+    [SyncVar]
+    float MovementLeft = 5;
+
+    float waitTime = 0;
 
     float Speed = 5;
     float TurretSpeed = 180; // Degrees per second
@@ -27,6 +34,9 @@ public class Tank : NetworkBehaviour {
     public Transform TurretPivot;
 
     public Transform BulletSpawnPoint;
+    public float BlockWidth = 1.25f;
+    public float BlockHeight = 1.28f;
+    public float[] worldConstraints = { -27.5f, 27.5f };
 
     float turretAngle = 90f;
 
@@ -36,15 +46,23 @@ public class Tank : NetworkBehaviour {
     Vector3 serverPosition;
 
     [SyncVar]
+    Quaternion originalRotation;
+
+    [SyncVar]
+    Quaternion serverRotation;
+
+    [SyncVar]
     float serverTurretAngle;
 
     Vector3 serverPositionSmoothVelocity;
+    Vector3 localPositionSmoothVelocity;
     float serverTurretAngleVelocity;
 
     static public Tank LocalTank { get; protected set; }
 
     public bool IsLockedIn { get; protected set; }
 
+    
     void NewTurn()
     {
         // Runs on server? 
@@ -67,6 +85,9 @@ public class Tank : NetworkBehaviour {
 
             LocalTank = this;
 
+            if (!this.gameObject.tag.Equals("Player"))
+                this.gameObject.tag = "Player";
+
             AuthorityUpdate();
         }
 
@@ -75,7 +96,7 @@ public class Tank : NetworkBehaviour {
         {
             // We don't directly own this object, so we had better move to the server's
             // position.
-
+            transform.rotation = serverRotation;
             transform.position = Vector3.SmoothDamp(
                 transform.position,
                 serverPosition,
@@ -83,13 +104,14 @@ public class Tank : NetworkBehaviour {
                 0.25f);
 
             turretAngle = Mathf.SmoothDamp(turretAngle, serverTurretAngle, ref serverTurretAngleVelocity, 0.25f);
+            
         }
 
         // Do generic updates for ALL clients/server -- like animating movements and such
         TurretPivot.localRotation = Quaternion.Euler( 0, 0, turretAngle );
+        transform.rotation = serverRotation;
 
-
-	}
+    }
 
     void AuthorityUpdate()
     {
@@ -116,20 +138,52 @@ public class Tank : NetworkBehaviour {
             return;
         }
 
-        // Listen for keyboard commands for movement
-        float movement = Input.GetAxis("Horizontal") * Speed * Time.deltaTime;
-        if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+        waitTime += Time.deltaTime;
+        if (waitTime > 2.5f && MovementLeft != 0)
         {
-            movement *= 0.1f;
+            
+            float movement = Input.GetAxis("Horizontal");
+            if (movement > 0)
+                movement = BlockWidth;
+            if (movement < 0)
+                movement = BlockWidth * -1;
+            if (movement != 0)
+            {
+                
+                //Some reason, game removed us from grid? Fix:
+                
+                if ((transform.position.x % BlockWidth) != 0)
+                {
+                    movement -= ((transform.position.x % BlockWidth));
+                }
+                // Is this in our world?
+                if (((transform.position.x + movement) > worldConstraints[1]) || ((transform.position.x + movement) < worldConstraints[0]))
+                {
+                    return;
+                }
+                
+                transform.rotation = originalRotation;
+                waitTime = 0;
+                MovementLeft -= 1;
+                Debug.Log(MovementLeft + " moves left.");
+
+                serverRotation = transform.localRotation;
+                transform.Translate(movement, 0, 0);
+                
+                CmdUpdatePosition(transform.position);
+            }
+   
+        }
+        if (MovementLeft == 0)
+        {
+            IsLockedIn = true;
+            // and let the server know
+            CmdLockIn();
         }
 
-        // TODO: track movement left
 
-        // We have authority, and we don't want any input lag -- so lets move ourselves.
-        transform.Translate(movement, 0, 0);
 
-        // Do we manually tell the network where we moved?
-        CmdUpdatePosition(transform.position);
+
 
         if (Input.GetKeyUp(KeyCode.Space))
         {
@@ -180,9 +234,14 @@ public class Tank : NetworkBehaviour {
         }
 
     }
+    [SyncVar]
+    bool canShoot = true;
 
     public void Fire()
     {
+        if (!canShoot)
+        { NewTurn(); return; }
+
         this.transform.position = serverPosition;
         turretAngle = serverTurretAngle;
 
@@ -192,6 +251,53 @@ public class Tank : NetworkBehaviour {
         );
 
         CmdFireBullet( BulletSpawnPoint.position, velocity );
+        NewTurn();
+    }
+
+    /*
+     *  Added Gravity and Hills 
+     * 
+     */
+    private void FixedUpdate()
+    {
+        
+    }
+    void OnTriggerEnter2D(Collider2D collider)
+    {
+        
+        if (hasAuthority == false)
+        {
+            return;
+        }
+        if (collider.tag.Equals("HILL_L"))
+        {
+            
+            if (transform.rotation.z == 0)
+                transform.Rotate(0, 0, 45);
+            serverRotation = transform.rotation;
+            CmdUpdatePosition(transform.position);
+            canShoot = false;
+            return;
+        }
+        if (collider.tag.Equals("GROUND"))
+        {
+            serverRotation = originalRotation;
+            transform.rotation = serverRotation;
+            CmdUpdatePosition(transform.position);
+            canShoot = true;
+            return;
+        }
+        if (collider.tag.Equals("HILL_R"))
+        {
+            
+            if(transform.rotation.z == 0)
+                transform.Rotate(0,0,-45);
+            serverRotation = transform.rotation;
+            CmdUpdatePosition(transform.position);
+            canShoot = false;
+            return;
+        }
+
     }
 
     [Command]
